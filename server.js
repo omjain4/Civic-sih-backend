@@ -11,6 +11,50 @@ const app = express();
 // Connect to database
 connectDB();
 
+// Admin seed function
+const seedAdminUser = async () => {
+  try {
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: 'om@gmail.com' });
+    if (existingAdmin) {
+      console.log('✅ Admin user already exists');
+      return;
+    }
+
+    // Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('omjain', salt);
+
+    // Create admin user
+    const adminUser = new User({
+      email: 'om@gmail.com',
+      phone: '0000000000', // Default admin phone
+      password: hashedPassword,
+      role: 'admin'
+    });
+
+    await adminUser.save();
+    console.log('🔑 Admin user seeded successfully');
+    console.log('📧 Email: om@gmail.com');
+    console.log('🔒 Password: omjain');
+  } catch (error) {
+    console.error('❌ Error seeding admin user:', error);
+  }
+};
+
+// Seed admin user after database connection
+const initializeApp = async () => {
+  try {
+    await seedAdminUser();
+  } catch (error) {
+    console.error('Error initializing app:', error);
+  }
+};
+
+// Call initialization function
+initializeApp();
+
+
 // Middleware
 const corsOptions = {
   origin: function (origin, callback) {
