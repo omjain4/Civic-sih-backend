@@ -20,7 +20,8 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:8080',
       'https://civicsync-resolve-livid.vercel.app',
-      'https://civicsync-resolve-om-jains-projects.vercel.app'
+      'https://civicsync-resolve-om-jains-projects.vercel.app',
+      'https://civicsync-resolve-a9i7lflgd-om-jains-projects.vercel.app' 
     ];
     
     if (allowedOrigins.includes(origin)) {
