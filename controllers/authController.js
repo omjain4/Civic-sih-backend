@@ -114,9 +114,6 @@ exports.register = async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 exports.login = async (req, res) => {
-  console.log('Login route hit!');
-  console.log('Request body:', { email: req.body.email, password: '***' });
-  
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -144,9 +141,9 @@ exports.login = async (req, res) => {
     }
     
     const token = getSignedJwtToken(user._id);
-    const userResponse = await User.findById(user._id);
+    const userResponse = await User.findById(user._id); // This will include the role
     
-    console.log('User logged in successfully:', user._id);
+    console.log('Login successful for user:', userResponse); // Debug log
     
     res.status(200).json({ 
       success: true, 
@@ -176,6 +173,8 @@ exports.getMe = async (req, res) => {
       });
     }
     
+    console.log('Returning user data:', user); // Debug log
+    
     res.status(200).json({
       success: true,
       data: user
@@ -188,3 +187,4 @@ exports.getMe = async (req, res) => {
     });
   }
 };
+
