@@ -12,12 +12,30 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:8080','http://civicsync-resolve-om-jains-projects.vercel.app', 'https://civicsync-resolve-livid.vercel.app/' ], // Your frontend URL
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'https://civicsync-resolve-livid.vercel.app',
+      'https://civicsync-resolve-om-jains-projects.vercel.app'
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
