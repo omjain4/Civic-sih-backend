@@ -17,7 +17,13 @@ const seedAdminUser = async () => {
     // Check if admin already exists
     const existingAdmin = await User.findOne({ email: 'om@gmail.com' });
     if (existingAdmin) {
-      console.log('✅ Admin user already exists');
+      console.log('✅ Admin user already exists with role:', existingAdmin.role);
+      // If admin exists but doesn't have admin role, update it
+      if (existingAdmin.role !== 'admin') {
+        existingAdmin.role = 'admin';
+        await existingAdmin.save();
+        console.log('🔄 Updated existing user to admin role');
+      }
       return;
     }
 
@@ -28,19 +34,21 @@ const seedAdminUser = async () => {
     // Create admin user
     const adminUser = new User({
       email: 'om@gmail.com',
-      phone: '0000000000', // Default admin phone
+      phone: '0000000000',
       password: hashedPassword,
-      role: 'admin'
+      role: 'admin' // Explicitly set role to admin
     });
 
-    await adminUser.save();
-    console.log('🔑 Admin user seeded successfully');
-    console.log('📧 Email: om@gmail.com');
-    console.log('🔒 Password: omjain');
+    const savedAdmin = await adminUser.save();
+    console.log('🔑 Admin user created successfully');
+    console.log('📧 Email:', savedAdmin.email);
+    console.log('👤 Role:', savedAdmin.role);
+    console.log('🆔 ID:', savedAdmin._id);
   } catch (error) {
     console.error('❌ Error seeding admin user:', error);
   }
 };
+
 
 // Seed admin user after database connection
 const initializeApp = async () => {

@@ -141,14 +141,17 @@ exports.login = async (req, res) => {
     }
     
     const token = getSignedJwtToken(user._id);
-    const userResponse = await User.findById(user._id); // This will include the role
     
-    console.log('Login successful for user:', userResponse); // Debug log
+    // Get user without password but with all other fields including role
+    const userResponse = await User.findById(user._id).select('-password');
+    
+    console.log('Login successful - User data being returned:', userResponse);
+    console.log('User role:', userResponse.role);
     
     res.status(200).json({ 
       success: true, 
       token,
-      user: userResponse
+      user: userResponse // This should include the role field
     });
   } catch (error) {
     console.error('Login error:', error);
