@@ -49,7 +49,6 @@ const seedAdminUser = async () => {
   }
 };
 
-
 // Seed admin user after database connection
 const initializeApp = async () => {
   try {
@@ -62,8 +61,7 @@ const initializeApp = async () => {
 // Call initialization function
 initializeApp();
 
-
-// Middleware
+// CORS Options Configuration
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -73,46 +71,72 @@ const corsOptions = {
       'http://localhost:8080',
       'https://civicsync-resolve-livid.vercel.app',
       'https://civicsync-resolve-om-jains-projects.vercel.app',
-      'https://civicsync-resolve-a9i7lflgd-om-jains-projects.vercel.app' 
+      'https://civicsync-resolve-a9i7lflgd-om-jains-projects.vercel.app'
     ];
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
 };
 
+// Middleware
+// Apply CORS with options
 app.use(cors(corsOptions));
 
-app.use(express.json());
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Body parsing middleware
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Import and use routes - THIS IS CRITICAL
-const authRoutes = require('./routes/auth');
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
 
+// Import and use routes
+const authRoutes = require('./routes/auth');
 const reportsRoutes = require('./routes/reports');
+
 app.use('/auth', authRoutes);
-app.use('/reports', reportsRoutes); 
+app.use('/reports', reportsRoutes);
 
 // Test route to verify server is working
 app.get('/', (req, res) => {
-  res.json({ message: 'Server is running!' });
+  res.json({ 
+    message: 'Server is running!',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // 404 handler for debugging
 app.use('*', (req, res) => {
   console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} not found` });
+  res.status(404).json({ 
+    message: `Route ${req.method} ${req.originalUrl} not found` 
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Global error:', err);
+  res.status(500).json({ 
+    success: false, 
+    message: 'Server Error' 
+  });
 });
 
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`🚀 Server started on port ${PORT}`);
+  console.log(`🌐 CORS enabled for allowed origins`);
 });
-
-// Removed duplicate code that redeclares "app" and its associated routes and server listen
