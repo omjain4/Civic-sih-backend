@@ -31,7 +31,7 @@ const ReportSchema = new mongoose.Schema({
     required: [true, 'Please add a description'],
     maxlength: [500, 'Description can not be more than 500 characters']
   },
-  // CORRECTED LOCATION SCHEMA
+  // GeoJSON location for GPS coordinates
   location: {
     type: {
       type: String,
@@ -47,7 +47,7 @@ const ReportSchema = new mongoose.Schema({
     required: [true, 'Please add an address or location description']
   },
   imageUrl: {
-    type: String
+    type: String // Cloudinary URL
   },
   status: {
     type: String,
