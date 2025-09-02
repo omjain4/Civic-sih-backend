@@ -64,21 +64,29 @@ initializeApp();
 
 
 // Middleware
-// Simple CORS fix - allows all origins temporarily
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight requests immediately
-  if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS request for:', req.url);
-    return res.status(200).end();
-  }
-  
-  next();
-});
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'https://civicsync-resolve-livid.vercel.app',
+      'https://civicsync-resolve-om-jains-projects.vercel.app',
+      'https://civicsync-resolve-a9i7lflgd-om-jains-projects.vercel.app' 
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 app.use(cors(corsOptions));
 
 app.use(express.json());
