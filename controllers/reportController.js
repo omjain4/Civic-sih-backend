@@ -65,7 +65,6 @@ const uploadToCloudinary = (req, res, next) => {
       ],
       // Additional optimization options
       flags: 'progressive', // Progressive JPEG for faster loading
-      metadata: false, // Remove metadata to reduce file size
     },
     (error, result) => {
       const uploadTime = Date.now() - uploadStart;
