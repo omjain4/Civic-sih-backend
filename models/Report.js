@@ -26,10 +26,17 @@ const ReportSchema = new mongoose.Schema({
       "Other"
     ]
   },
+  title: String,
   description: {
     type: String,
     required: [true, 'Please add a description'],
     maxlength: [500, 'Description can not be more than 500 characters']
+  },
+  imageUrl: {
+    type: String // Cloudinary URL (before image)
+  },
+  afterImageUrl: { // NEW FIELD
+    type: String // Cloudinary URL (after image upload by admin)
   },
   // GeoJSON location for GPS coordinates
   location: {
@@ -39,15 +46,12 @@ const ReportSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number], // [longitude, latitude]
-      index: '2dsphere' // Create a geospatial index
+      index: '2dsphere'
     }
   },
   address: {
     type: String,
     required: [true, 'Please add an address or location description']
-  },
-  imageUrl: {
-    type: String // Cloudinary URL
   },
   status: {
     type: String,
@@ -67,7 +71,8 @@ const ReportSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  severity: Number
 });
 
 module.exports = mongoose.model('Report', ReportSchema);

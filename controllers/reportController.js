@@ -287,47 +287,55 @@ exports.getReport = async (req, res, next) => {
     });
   }
 };
+const uploadAfterImageToCloudinary = (req, res, next) => {
+  if (!req.file) return next();
+  const stream = cloudinary.uploader.upload_stream(
+    {
+      folder: 'civic_issues/after',
+      resource_type: 'image',
+      transformation: [
+        { width: 1200, height: 1200, crop: 'limit' },
+        { quality: 'auto:good', fetch_format: 'auto' }
+      ],
+      flags: 'progressive',
+    },
+    (error, result) => {
+      if (error) return res.status(500).json({ success: false, message: "After image upload failed: " + error.message });
+      req.body.afterImageUrl = result.secure_url;
+      next();
+    }
+  );
+  streamifier.createReadStream(req.file.buffer).pipe(stream);
+};
 
 // @desc    Update report status (Admin only)
 // @route   PUT /api/reports/:id
 // @access  Private/Admin
-exports.updateReportStatus = async (req, res, next) => {
-  try {
-    console.log('📝 Updating report status:', req.params.id);
-    console.log('📋 Update data:', req.body);
-    
-    let report = await Report.findById(req.params.id);
-    
-    if (!report) {
-      console.log('❌ Report not found for update');
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
+exports.updateReportStatus = [
+  upload.single('afterImage'), // accept afterImage file for resolved
+  uploadAfterImageToCloudinary,
+  async (req, res, next) => {
+    try {
+      let report = await Report.findById(req.params.id);
+      if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
+      // If resolving, require after image (either already present, or new upload)
+      if (req.body.status === 'resolved' && !req.body.afterImageUrl && !report.afterImageUrl) {
+        return res.status(400).json({ success: false, message: 'After image required to resolve.' });
+      }
+      // Save after image if uploaded now
+      if (req.body.afterImageUrl) {
+        report.afterImageUrl = req.body.afterImageUrl;
+      }
+      if (req.body.status) report.status = req.body.status;
+      await report.save();
+      report = await Report.findById(report._id).populate('user', 'email phone');
+      res.status(200).json({ success: true, data: report });
+    } catch (error) {
+      res.status(400).json({ success: false, message: error.message });
     }
-
-    // Update the report
-    report = await Report.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    }).populate('user', 'email phone');
-
-    console.log('✅ Report updated successfully');
-    console.log('📊 New status:', report.status);
-    
-    res.status(200).json({
-      success: true,
-      data: report
-    });
-  } catch (error) {
-    console.error('❌ Error updating report:', error);
-    res.status(400).json({
-      success: false,
-      message: error.message
-    });
   }
-};
-
+];
 // @desc    Delete report (Admin only)
 // @route   DELETE /api/reports/:id
 // @access  Private/Admin

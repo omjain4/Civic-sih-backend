@@ -107,8 +107,8 @@ app.use((req, res, next) => {
 const authRoutes = require('./routes/auth');
 const reportsRoutes = require('./routes/reports');
 
-app.use('/auth', authRoutes);
-app.use('/reports', reportsRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Test route to verify server is working
 app.get('/', (req, res) => {
