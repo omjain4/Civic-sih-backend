@@ -109,7 +109,8 @@ const reportsRoutes = require('./routes/reports');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportsRoutes);
-
+app.use('/auth', authRoutes);
+app.use('/reports', reportsRoutes);
 // Test route to verify server is working
 app.get('/', (req, res) => {
   res.json({ 
