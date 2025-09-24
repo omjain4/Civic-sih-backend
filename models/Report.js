@@ -72,6 +72,10 @@ const ReportSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+    upvotes: [{
+    type: mongoose.Schema.ObjectId,
+    ref: 'User'
+  }],
   severity: Number
 });
 

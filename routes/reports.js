@@ -7,32 +7,29 @@ const {
   deleteReport,
   getUserReports,
   getReportStats,
-  updateUserReportImage, // New
-  deleteReportImage     // New
+  upvoteReport // --- NEW ---
 } = require('../controllers/reportController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const router = express.Router();
 
-// Public route to view all reports on the map
+// Publicly viewable reports
 router.route('/').get(getReports);
 
-// All routes below are protected
-router.use(protect);
+// --- NEW UPVOTE ROUTE ---
+// Must be authenticated to upvote
+router.route('/:id/upvote').put(protect, upvoteReport);
 
-router.route('/').post(createReport);
-router.route('/my-reports').get(getUserReports);
+// All other routes that modify data are protected
+router.route('/')
+  .post(protect, createReport);
 
-// Image management routes for a specific report
-router.route('/:id/image')
-  .put(updateUserReportImage)     // User replaces their image
-  .delete(deleteReportImage);   // User or Admin deletes an image
+router.route('/my-reports').get(protect, getUserReports);
 
-// Admin-only routes
-router.route('/stats').get(authorize('admin'), getReportStats);
+router.route('/stats').get(protect, authorize('admin'), getReportStats);
 
 router.route('/:id')
-  .get(getReport) // Can be accessed by user or admin
-  .put(authorize('admin'), updateReportStatus)
-  .delete(authorize('admin'), deleteReport);
+  .get(getReport)
+  .put(protect, authorize('admin'), updateReportStatus)
+  .delete(protect, deleteReport); // Note: Assumes delete logic handles user/admin roles
 
 module.exports = router;

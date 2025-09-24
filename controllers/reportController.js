@@ -217,18 +217,51 @@ exports.getUserReports = async (req, res, next) => {
   }
 };
 
-// @desc    Get single report
-// @route   GET /api/reports/:id
+// Add this new function to your existing reportController.js file
+
+// @desc    Upvote or un-upvote a report
+// @route   PUT /api/reports/:id/upvote
 // @access  Private
-exports.getReport = async (req, res, next) => {
+exports.upvoteReport = async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id)
-      .populate('user', 'email phone');
-    
+    const report = await Report.findById(req.params.id);
+
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
-    
+
+    // Check if the user has already upvoted this report
+    const upvotedIndex = report.upvotes.findIndex(
+      (userId) => userId.toString() === req.user.id
+    );
+
+    if (upvotedIndex > -1) {
+      // User has already upvoted, so remove the upvote (un-upvote)
+      report.upvotes.splice(upvotedIndex, 1);
+    } else {
+      // User has not upvoted, so add the upvote
+      report.upvotes.push(req.user.id);
+    }
+
+    await report.save();
+
+    res.status(200).json({ success: true, data: report });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// Also, ensure your getReports function populates user details
+// Find your existing `getReports` function and make sure it includes `.populate('user', 'email')`
+// @route   GET /api/reports/:id
+// @access  Public
+exports.getReport = async (req, res, next) => {
+  try {
+    const report = await Report.findById(req.params.id).populate('user', 'email phone');
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
     res.status(200).json({ success: true, data: report });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
@@ -379,20 +412,50 @@ exports.deleteReportImage = async (req, res) => {
 // @desc    Delete report (Admin only)
 // @route   DELETE /api/reports/:id
 // @access  Private/Admin
+// @desc    Delete report (Admin or Owner)
+// @route   DELETE /api/reports/:id
+// @access  Private
 exports.deleteReport = async (req, res, next) => {
   try {
     const report = await Report.findById(req.params.id);
+
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
+
+    // Check if user is the report owner OR an admin
+    if (report.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'User not authorized to delete this report' });
+    }
+
+    // Helper function to delete from Cloudinary (if you have one)
+    const deleteFromCloudinary = async (imageUrl) => {
+        if (!imageUrl) return;
+        try {
+            const publicIdWithFolder = imageUrl.split('/').slice(-2).join('/').split('.')[0];
+            await cloudinary.uploader.destroy(publicIdWithFolder);
+        } catch (err) {
+            console.error("Failed to delete image from Cloudinary:", err);
+        }
+    };
+
     // Delete associated images from Cloudinary
     await deleteFromCloudinary(report.imageUrl);
     await deleteFromCloudinary(report.afterImageUrl);
 
     await report.deleteOne();
-    res.status(200).json({ success: true, message: 'Report deleted successfully', data: {} });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Report deleted successfully',
+      data: {}
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error('Error deleting report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error'
+    });
   }
 };
 
