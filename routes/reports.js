@@ -6,25 +6,32 @@ const {
   updateReportStatus,
   deleteReport,
   getUserReports,
-  getReportStats // Import the new function
+  getReportStats,
+  updateUserReportImage, // New
+  deleteReportImage     // New
 } = require('../controllers/reportController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const router = express.Router();
 
-//router.use(protect); // All routes from here are protected
+// Public route to view all reports on the map
+router.route('/').get(getReports);
 
-// Add the new stats route (must be before routes with /:id)
-router.route('/stats').get(authorize('admin'), getReportStats);
+// All routes below are protected
+router.use(protect);
 
-router.route('/')
-  .post(protect, createReport)  // POST (submit report) stays protected!
-  .get(getReports);             // GET (view reports) is public
-
-
+router.route('/').post(createReport);
 router.route('/my-reports').get(getUserReports);
 
+// Image management routes for a specific report
+router.route('/:id/image')
+  .put(updateUserReportImage)     // User replaces their image
+  .delete(deleteReportImage);   // User or Admin deletes an image
+
+// Admin-only routes
+router.route('/stats').get(authorize('admin'), getReportStats);
+
 router.route('/:id')
-  .get(getReport)
+  .get(getReport) // Can be accessed by user or admin
   .put(authorize('admin'), updateReportStatus)
   .delete(authorize('admin'), deleteReport);
 

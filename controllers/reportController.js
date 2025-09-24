@@ -11,6 +11,22 @@ cloudinary.config({
   secure: true
 });
 
+// Helper function to delete an image from Cloudinary
+const deleteFromCloudinary = async (imageUrl) => {
+  if (!imageUrl) return;
+  try {
+    const urlParts = imageUrl.split('/');
+    // Assumes folder/public_id format, e.g., .../civic_issues/xyz.jpg
+    const publicIdWithFolder = urlParts.slice(-2).join('/').split('.')[0];
+    const result = await cloudinary.uploader.destroy(publicIdWithFolder);
+    console.log('✅ Image deleted from Cloudinary:', result);
+  } catch (cloudinaryError) {
+    console.error('⚠️ Failed to delete image from Cloudinary:', cloudinaryError);
+    // Do not throw error, just log it. The DB record can still be updated.
+  }
+};
+
+
 // Configure multer for memory storage (better for cloud uploads)
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -21,10 +37,8 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     // Only allow image files
     if (file.mimetype.startsWith('image/')) {
-      console.log(`✅ File type accepted: ${file.mimetype}`);
       cb(null, true);
     } else {
-      console.log(`❌ File type rejected: ${file.mimetype}`);
       cb(new Error('Only image files are allowed'), false);
     }
   }
@@ -44,6 +58,7 @@ const uploadToCloudinary = (req, res, next) => {
     mimetype: req.file.mimetype
   });
 
+
   const uploadStart = Date.now();
 
   // Cloudinary upload with automatic optimization and compression
@@ -51,38 +66,24 @@ const uploadToCloudinary = (req, res, next) => {
     {
       folder: 'civic_issues',
       resource_type: 'image',
-      // Image compression and optimization transformations
       transformation: [
-        {
-          width: 1200,
-          height: 1200,
-          crop: 'limit' // Don't upscale, only downscale if necessary
-        },
-        {
-          quality: 'auto:good', // Automatic quality optimization
-          fetch_format: 'auto' // Automatic format selection (WebP, AVIF, etc.)
-        }
+        { width: 1200, height: 1200, crop: 'limit' },
+        { quality: 'auto:good', fetch_format: 'auto' }
       ],
-      // Additional optimization options
-      flags: 'progressive', // Progressive JPEG for faster loading
+      flags: 'progressive',
     },
     (error, result) => {
       const uploadTime = Date.now() - uploadStart;
       
       if (error) {
         console.error('❌ Cloudinary upload failed:', error);
-        console.error('Error details:', {
-          message: error.message,
-          http_code: error.http_code
-        });
         return res.status(500).json({
           success: false,
           message: 'Image upload failed: ' + error.message
         });
       }
 
-      // Log successful upload details
-      console.log('✅ Cloudinary upload successful!');
+            console.log('✅ Cloudinary upload successful!');
       console.log('📈 Upload statistics:', {
         url: result.secure_url,
         publicId: result.public_id,
@@ -93,13 +94,10 @@ const uploadToCloudinary = (req, res, next) => {
         uploadTime: `${uploadTime}ms`,
         dimensions: `${result.width}x${result.height}`
       });
-
-      // Attach the secure URL to request body for the next middleware
       req.body.imageUrl = result.secure_url;
       req.uploadStats = {
         originalSize: req.file.size,
         compressedSize: result.bytes,
-        compressionRatio: ((req.file.size - result.bytes) / req.file.size) * 100,
         uploadTime: uploadTime
       };
 
@@ -107,7 +105,6 @@ const uploadToCloudinary = (req, res, next) => {
     }
   );
 
-  // Stream the file buffer to Cloudinary
   streamifier.createReadStream(req.file.buffer).pipe(stream);
 };
 
@@ -118,7 +115,7 @@ exports.createReport = [
   upload.single('photo'),
   uploadToCloudinary,
   async (req, res, next) => {
-    try {
+        try {
       console.log('📝 Creating new report...');
       console.log('📋 Request data:', {
         title: req.body.title,
@@ -130,8 +127,6 @@ exports.createReport = [
       });
 
       const { title, category, address, description, latitude, longitude, severity } = req.body;
-      
-      // Build report data object
       const reportData = {
         user: req.user.id,
         title: title || category,
@@ -142,49 +137,26 @@ exports.createReport = [
         priority: 'medium'
       };
 
-      // Add severity level if provided
       if (severity) {
         const severityLevel = parseInt(severity);
         reportData.severity = severityLevel;
-        
-        // Set priority based on severity
         if (severityLevel >= 4) reportData.priority = 'high';
         else if (severityLevel <= 2) reportData.priority = 'low';
-        
-        console.log('📊 Severity level set:', severityLevel);
       }
 
-      // Add compressed image URL if uploaded
       if (req.body.imageUrl) {
         reportData.imageUrl = req.body.imageUrl;
-        console.log('🖼️ Photo attached and compressed successfully');
-        
-        // Log compression statistics if available
-        if (req.uploadStats) {
-          console.log('📦 Compression stats:', {
-            sizeSaved: `${((req.uploadStats.originalSize - req.uploadStats.compressedSize) / 1024 / 1024).toFixed(2)}MB`,
-            compressionRatio: `${req.uploadStats.compressionRatio.toFixed(1)}%`
-          });
-        }
       }
 
-      // Add GPS coordinates if provided (GeoJSON format)
+      
       if (latitude && longitude) {
         reportData.location = {
           type: 'Point',
           coordinates: [parseFloat(longitude), parseFloat(latitude)]
         };
-        console.log('📍 GPS coordinates saved:', {
-          lat: parseFloat(latitude),
-          lng: parseFloat(longitude)
-        });
       }
 
-      // Create the report in database
       const report = await Report.create(reportData);
-      console.log('✅ Report created successfully!');
-      console.log('🆔 Report ID:', report._id);
-
       res.status(201).json({
         success: true,
         message: 'Report submitted successfully',
@@ -207,13 +179,9 @@ exports.createReport = [
 // @access  Private/Admin
 exports.getReports = async (req, res, next) => {
   try {
-    console.log('👑 Admin fetching all reports...');
-    
     const reports = await Report.find()
       .populate('user', 'email phone')
       .sort({ createdAt: -1 });
-    
-    console.log('📊 Total reports found:', reports.length);
     
     res.status(200).json({
       success: true,
@@ -221,7 +189,6 @@ exports.getReports = async (req, res, next) => {
       data: reports
     });
   } catch (error) {
-    console.error('❌ Error fetching reports:', error);
     res.status(500).json({
       success: false,
       message: 'Server Error'
@@ -234,12 +201,8 @@ exports.getReports = async (req, res, next) => {
 // @access  Private
 exports.getUserReports = async (req, res, next) => {
   try {
-    console.log('👤 Fetching reports for user:', req.user.id);
-    
     const reports = await Report.find({ user: req.user.id })
       .sort({ createdAt: -1 });
-    
-    console.log('📊 User reports found:', reports.length);
     
     res.status(200).json({
       success: true,
@@ -247,7 +210,6 @@ exports.getUserReports = async (req, res, next) => {
       data: reports
     });
   } catch (error) {
-    console.error('❌ Error fetching user reports:', error);
     res.status(500).json({
       success: false,
       message: 'Server Error'
@@ -260,33 +222,19 @@ exports.getUserReports = async (req, res, next) => {
 // @access  Private
 exports.getReport = async (req, res, next) => {
   try {
-    console.log('🔍 Fetching report:', req.params.id);
-    
     const report = await Report.findById(req.params.id)
       .populate('user', 'email phone');
     
     if (!report) {
-      console.log('❌ Report not found');
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
+      return res.status(404).json({ success: false, message: 'Report not found' });
     }
-
-    console.log('✅ Report found:', report.title || report.category);
     
-    res.status(200).json({
-      success: true,
-      data: report
-    });
+    res.status(200).json({ success: true, data: report });
   } catch (error) {
-    console.error('❌ Error fetching report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server Error'
-    });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
 const uploadAfterImageToCloudinary = (req, res, next) => {
   if (!req.file) return next();
   const stream = cloudinary.uploader.upload_stream(
@@ -312,18 +260,16 @@ const uploadAfterImageToCloudinary = (req, res, next) => {
 // @route   PUT /api/reports/:id
 // @access  Private/Admin
 exports.updateReportStatus = [
-  upload.single('afterImage'), // accept afterImage file for resolved
+  upload.single('afterImage'),
   uploadAfterImageToCloudinary,
   async (req, res, next) => {
     try {
       let report = await Report.findById(req.params.id);
       if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
-      // If resolving, require after image (either already present, or new upload)
       if (req.body.status === 'resolved' && !req.body.afterImageUrl && !report.afterImageUrl) {
         return res.status(400).json({ success: false, message: 'After image required to resolve.' });
       }
-      // Save after image if uploaded now
       if (req.body.afterImageUrl) {
         report.afterImageUrl = req.body.afterImageUrl;
       }
@@ -336,53 +282,117 @@ exports.updateReportStatus = [
     }
   }
 ];
+
+// @desc    Replace a user's report image
+// @route   PUT /api/reports/:id/image
+// @access  Private
+exports.updateUserReportImage = [
+  upload.single('photo'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'No image file uploaded.' });
+      }
+
+      const report = await Report.findById(req.params.id);
+      if (!report) {
+        return res.status(404).json({ success: false, message: 'Report not found' });
+      }
+      // Authorization checks
+      if (report.user.toString() !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'User not authorized to update this report' });
+      }
+      if (report.status !== 'pending') {
+        return res.status(400).json({ success: false, message: 'Cannot change image for a report that is in progress or resolved' });
+      }
+
+      // Delete old image from Cloudinary if it exists
+      if (report.imageUrl) {
+        await deleteFromCloudinary(report.imageUrl);
+      }
+
+      // Upload new image
+      const stream = cloudinary.uploader.upload_stream({ folder: 'civic_issues' }, async (error, result) => {
+        if (error) {
+          return res.status(500).json({ success: false, message: 'Image upload failed' });
+        }
+        report.imageUrl = result.secure_url;
+        await report.save();
+        res.status(200).json({ success: true, data: report });
+      });
+      streamifier.createReadStream(req.file.buffer).pipe(stream);
+
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Server Error: ' + error.message });
+    }
+  }
+];
+
+// @desc    Delete a report image (for Users and Admins)
+// @route   DELETE /api/reports/:id/image
+// @access  Private
+exports.deleteReportImage = async (req, res) => {
+  try {
+    const report = await Report.findById(req.params.id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    // Admin logic
+    if (req.user.role === 'admin') {
+      const { imageType } = req.body; // 'before' or 'after'
+      if (imageType === 'before' && report.imageUrl) {
+        await deleteFromCloudinary(report.imageUrl);
+        report.imageUrl = null;
+      } else if (imageType === 'after' && report.afterImageUrl) {
+        await deleteFromCloudinary(report.afterImageUrl);
+        report.afterImageUrl = null;
+      } else {
+        return res.status(400).json({ success: false, message: 'Invalid or missing image type specified.' });
+      }
+    } 
+    // User logic
+    else {
+      // Authorization checks for user
+      if (report.user.toString() !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'User not authorized' });
+      }
+      if (report.status !== 'pending') {
+        return res.status(400).json({ success: false, message: 'Cannot delete image for a non-pending report' });
+      }
+      if (report.imageUrl) {
+        await deleteFromCloudinary(report.imageUrl);
+        report.imageUrl = null;
+      } else {
+         return res.status(400).json({ success: false, message: 'No image to delete.' });
+      }
+    }
+    
+    await report.save();
+    res.status(200).json({ success: true, data: report });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error: ' + error.message });
+  }
+};
+
+
 // @desc    Delete report (Admin only)
 // @route   DELETE /api/reports/:id
 // @access  Private/Admin
 exports.deleteReport = async (req, res, next) => {
   try {
-    console.log('🗑️ Deleting report:', req.params.id);
-    
     const report = await Report.findById(req.params.id);
-    
     if (!report) {
-      console.log('❌ Report not found for deletion');
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
+      return res.status(404).json({ success: false, message: 'Report not found' });
     }
-
-    // Delete associated image from Cloudinary if exists
-    if (report.imageUrl) {
-      try {
-        // Extract public_id from Cloudinary URL
-        const urlParts = report.imageUrl.split('/');
-        const publicIdWithExtension = urlParts[urlParts.length - 1];
-        const publicId = 'civic_issues/' + publicIdWithExtension.split('.')[0];
-        
-        const result = await cloudinary.uploader.destroy(publicId);
-        console.log('🖼️ Image deleted from Cloudinary:', result);
-      } catch (cloudinaryError) {
-        console.error('⚠️ Failed to delete image from Cloudinary:', cloudinaryError);
-        // Continue with report deletion even if image deletion fails
-      }
-    }
+    // Delete associated images from Cloudinary
+    await deleteFromCloudinary(report.imageUrl);
+    await deleteFromCloudinary(report.afterImageUrl);
 
     await report.deleteOne();
-    console.log('✅ Report deleted successfully');
-    
-    res.status(200).json({
-      success: true,
-      message: 'Report deleted successfully',
-      data: {}
-    });
+    res.status(200).json({ success: true, message: 'Report deleted successfully', data: {} });
   } catch (error) {
-    console.error('❌ Error deleting report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server Error'
-    });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
 
@@ -391,37 +401,18 @@ exports.deleteReport = async (req, res, next) => {
 // @access  Private/Admin
 exports.getReportStats = async (req, res, next) => {
   try {
-    console.log('📊 Generating report statistics...');
-    
     const [total, pending, inProgress, resolved] = await Promise.all([
       Report.countDocuments(),
       Report.countDocuments({ status: 'pending' }),
       Report.countDocuments({ status: 'in-progress' }),
       Report.countDocuments({ status: 'resolved' })
     ]);
-
-    const stats = {
-      total,
-      pending,
-      inProgress,
-      resolved
-    };
-
-    console.log('📈 Statistics generated:', stats);
-    
-    res.status(200).json({
-      success: true,
-      data: stats
-    });
+    res.status(200).json({ success: true, data: { total, pending, inProgress, resolved } });
   } catch (error) {
-    console.error('❌ Error generating statistics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server Error'
-    });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
-
+// ... (keep getNearbyReports and bulkUpdateReports as they are)
 // @desc    Get reports by location (within radius)
 // @route   GET /api/reports/nearby/:latitude/:longitude/:radius
 // @access  Public
@@ -502,4 +493,4 @@ exports.bulkUpdateReports = async (req, res, next) => {
       message: error.message
     });
   }
-};
+};  
