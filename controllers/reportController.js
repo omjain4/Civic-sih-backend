@@ -252,6 +252,36 @@ exports.upvoteReport = async (req, res) => {
   }
 };
 
+// Add this new function to your existing reportController.js file
+
+// @desc    Assign a department to a report
+// @route   PUT /api/reports/:id/assign
+// @access  Private/Admin
+exports.assignDepartment = async (req, res) => {
+    try {
+        const { department } = req.body;
+
+        if (!department) {
+            return res.status(400).json({ success: false, message: 'Department is required' });
+        }
+
+        const report = await Report.findByIdAndUpdate(
+            req.params.id,
+            { assignedDepartment: department },
+            { new: true, runValidators: true }
+        );
+
+        if (!report) {
+            return res.status(404).json({ success: false, message: 'Report not found' });
+        }
+
+        res.status(200).json({ success: true, data: report });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+
 // Also, ensure your getReports function populates user details
 // Find your existing `getReports` function and make sure it includes `.populate('user', 'email')`
 // @route   GET /api/reports/:id
