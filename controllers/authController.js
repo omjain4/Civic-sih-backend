@@ -1,113 +1,86 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const { v2: cloudinary } = require('cloudinary');
+const streamifier = require('streamifier');
 
-// Environment variable validation
-if (!process.env.JWT_SECRET && !process.env.ACCESS_TOKEN_SECRET) {
-  console.error('JWT_SECRET or ACCESS_TOKEN_SECRET must be defined in environment variables');
-  process.exit(1);
-}
+// --- Cloudinary and Multer Setup ---
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true
+});
 
-// Utility to generate token - using existing ACCESS_TOKEN_SECRET as fallback
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+const uploadToCloudinary = (req, res, next) => {
+  if (!req.file) return next();
+
+  const stream = cloudinary.uploader.upload_stream(
+    { folder: 'profile_photos', transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }] },
+    (error, result) => {
+      if (error) {
+        console.error('Cloudinary Upload Error:', error);
+        return next(error);
+      }
+      req.body.profilePhoto = result.secure_url;
+      next();
+    }
+  );
+  streamifier.createReadStream(req.file.buffer).pipe(stream);
+};
+// --- End Setup ---
+
 const getSignedJwtToken = (id) => {
-  const secret = process.env.JWT_SECRET || process.env.ACCESS_TOKEN_SECRET;
-  const expiry = process.env.ACCESS_TOKEN_EXPIRY || '30d';
-  
-  return jwt.sign({ id }, secret, {
-    expiresIn: expiry
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || '30d'
   });
 };
 
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
-exports.register = async (req, res) => {
-  console.log('Register route hit!');
-  console.log('Request body:', req.body);
-  
-  const { email, phone, password } = req.body;
+exports.register = [
+  upload.single('profilePhoto'),
+  uploadToCloudinary,
+  async (req, res) => {
+    const { username, email, phone, password, profilePhoto } = req.body;
 
-  // Add validation
-  if (!email || !phone || !password) {
-    console.log('Missing required fields:', { email: !!email, phone: !!phone, password: !!password });
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Please provide email, phone, and password' 
-    });
+    if (!username || !email || !phone || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide all required fields' });
+    }
+
+    try {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      
+      const user = await User.create({
+        username,
+        email,
+        phone,
+        password: hashedPassword,
+        profilePhoto // This will be the Cloudinary URL or undefined (to use default)
+      });
+
+      const token = getSignedJwtToken(user._id);
+      const userResponse = await User.findById(user._id);
+
+      res.status(201).json({ success: true, token, user: userResponse });
+    } catch (error) {
+      console.error('Registration Error:', error);
+      let message = 'Server Error during registration';
+      if (error.code === 11000) {
+        message = `User with that ${Object.keys(error.keyValue)[0]} already exists`;
+      } else if (error.name === 'ValidationError') {
+        message = Object.values(error.errors).map(val => val.message).join(', ');
+      }
+      res.status(400).json({ success: false, message });
+    }
   }
-
-  console.log('✅ Validation passed, checking for existing user...');
-
-  try {
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    console.log('Existing user check result:', !!existingUser);
-    
-    if (existingUser) {
-      console.log('❌ User already exists');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User already exists with this email' 
-      });
-    }
-
-    console.log('✅ No existing user, creating new user...');
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    
-    console.log('✅ Password hashed, creating user in database...');
-    
-    const user = await User.create({
-      email,
-      phone,
-      password: hashedPassword
-    });
-
-    console.log('✅ User created successfully:', user._id);
-
-    const token = getSignedJwtToken(user._id);
-    console.log('✅ Token generated');
-    
-    const userResponse = await User.findById(user._id);
-    console.log('✅ User response prepared');
-
-    res.status(201).json({ 
-      success: true, 
-      token,
-      user: userResponse
-    });
-
-  } catch (error) {
-    console.error('❌ Register error:', error);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    
-    // Handle mongoose validation errors
-    if (error.name === 'ValidationError') {
-      const message = Object.values(error.errors).map(val => val.message).join(', ');
-      console.log('Validation error details:', message);
-      return res.status(400).json({ 
-        success: false, 
-        message 
-      });
-    }
-    
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      console.log('Duplicate key error');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User already exists with this email' 
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server Error during registration' 
-    });
-  }
-};
+];
 
 
 // @desc    Login user
@@ -117,48 +90,26 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Please provide an email and password' 
-    });
+    return res.status(400).json({ success: false, message: 'Please provide an email and password' });
   }
 
   try {
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
-      });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
     
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
-      });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
     
     const token = getSignedJwtToken(user._id);
+    const userResponse = await User.findById(user._id);
     
-    // Get user without password but with all other fields including role
-    const userResponse = await User.findById(user._id).select('-password');
-    
-    console.log('Login successful - User data being returned:', userResponse);
-    console.log('User role:', userResponse.role);
-    
-    res.status(200).json({ 
-      success: true, 
-      token,
-      user: userResponse // This should include the role field
-    });
+    res.status(200).json({ success: true, token, user: userResponse });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server Error during login' 
-    });
+    res.status(500).json({ success: false, message: 'Server Error during login' });
   }
 };
 
@@ -168,26 +119,11 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
-    console.log('Returning user data:', user); // Debug log
-    
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+    res.status(200).json({ success: true, data: user });
   } catch (error) {
-    console.error('GetMe error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server Error'
-    });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
-

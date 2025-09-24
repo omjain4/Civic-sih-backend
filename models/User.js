@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    required: [true, 'Please add a username'],
+    unique: true,
+    trim: true
+  },
   email: {
     type: String,
     required: [true, 'Please add an email'],
@@ -20,11 +26,15 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false
   },
+  profilePhoto: {
+    type: String,
+    default: 'https://i.ibb.co/688D2DP/default-avatar.png' // A default placeholder image
+  },
   role: {
-  type: String,
-  enum: ['user', 'admin'],
-  default: 'user'
-}
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  }
 }, {
   timestamps: true
 });
