@@ -8,7 +8,9 @@ const {
   getUserReports,
   getReportStats,
   upvoteReport,
-  assignDepartment// --- NEW ---
+  assignDepartment,
+  updateUserReportImage,
+  deleteReportImage
 } = require('../controllers/reportController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const router = express.Router();
@@ -33,5 +35,10 @@ router.route('/:id')
   .get(getReport)
   .put(protect, authorize('admin'), updateReportStatus)
   .delete(protect, deleteReport);
+
+// Image management routes
+router.route('/:id/image')
+  .put(protect, updateUserReportImage)
+  .delete(protect, deleteReportImage);
 
 module.exports = router;
