@@ -106,11 +106,14 @@ app.use((req, res, next) => {
 // Import and use routes
 const authRoutes = require('./routes/auth');
 const reportsRoutes = require('./routes/reports');
+const aiRoutes = require('./routes/ai');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/auth', authRoutes);
 app.use('/reports', reportsRoutes);
+app.use('/ai', aiRoutes);
 // Test route to verify server is working
 app.get('/', (req, res) => {
   res.json({ 

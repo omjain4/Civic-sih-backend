@@ -2,6 +2,9 @@ const Report = require('../models/Report');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const streamifier = require('streamifier');
+const { detectDuplicates } = require('../ai/duplicateDetector');
+const { analyzeImage, computePerceptualHash } = require('../ai/imageAnalyzer');
+const { matchImageWithDescription } = require('../ai/imageDescriptionMatcher');
 
 // Configure Cloudinary with environment variables
 cloudinary.config({
@@ -156,12 +159,118 @@ exports.createReport = [
         };
       }
 
+      // --- AI Analysis Pipeline ---
+      let aiAnalysis = null;
+      try {
+        const coordinates = reportData.location?.coordinates || null;
+
+        // Run AI checks in parallel
+        const [duplicateResult, imageAnalysisResult, descMatchResult] = await Promise.allSettled([
+          detectDuplicates({
+            description,
+            title: reportData.title,
+            category,
+            coordinates,
+            address
+          }),
+          req.file ? analyzeImage(req.file.buffer, coordinates) : Promise.resolve(null),
+          (req.file && description) ? matchImageWithDescription(
+            req.file.buffer, description, category, process.env.GOOGLE_AI_API_KEY
+          ) : Promise.resolve(null)
+        ]);
+
+        aiAnalysis = {
+          duplicateDetection: duplicateResult.status === 'fulfilled' ? duplicateResult.value : null,
+          imageAnalysis: imageAnalysisResult.status === 'fulfilled' && imageAnalysisResult.value ? {
+            metadata: imageAnalysisResult.value.metadata,
+            locationVerification: imageAnalysisResult.value.locationVerification,
+            timestampAssessment: imageAnalysisResult.value.timestampAssessment,
+            overallTrust: imageAnalysisResult.value.overallTrust
+          } : null,
+          descriptionMatch: descMatchResult.status === 'fulfilled' ? descMatchResult.value : null
+        };
+
+        // Store perceptual hash for future duplicate image detection
+        if (imageAnalysisResult.status === 'fulfilled' && imageAnalysisResult.value?.perceptualHash) {
+          reportData.imageHash = imageAnalysisResult.value.perceptualHash;
+        }
+
+        // --- Flag suspicious reports ---
+        const flagReasons = [];
+        const aiFlags = {};
+
+        // Check image-description mismatch
+        const descMatch = descMatchResult.status === 'fulfilled' ? descMatchResult.value : null;
+        if (descMatch) {
+          aiFlags.descriptionMatchScore = descMatch.descriptionMatch?.similarity || 0;
+          aiFlags.descriptionMatchLevel = descMatch.descriptionMatch?.matchLevel || 'unknown';
+          aiFlags.categoryMatch = descMatch.categoryValidation?.matches !== false;
+
+          if (descMatch.overallMatch === 'low') {
+            flagReasons.push('Image does not match the provided description');
+          }
+          if (descMatch.categoryValidation?.matches === false) {
+            flagReasons.push(`Image does not match selected category: ${category}`);
+          }
+        }
+
+        // Check image metadata trust
+        const imgAnalysis = imageAnalysisResult.status === 'fulfilled' ? imageAnalysisResult.value : null;
+        if (imgAnalysis) {
+          aiFlags.imageTrust = imgAnalysis.overallTrust;
+          aiFlags.locationVerified = imgAnalysis.locationVerification?.match === true;
+          if (imgAnalysis.locationVerification?.distance != null) {
+            aiFlags.locationDistance = imgAnalysis.locationVerification.distance;
+          }
+
+          if (imgAnalysis.locationVerification?.match === false) {
+            const dist = imgAnalysis.locationVerification.distance;
+            flagReasons.push(`Image GPS location is ${dist ? dist.toFixed(1) + 'km away from' : 'does not match'} the reported location`);
+          }
+          if (imgAnalysis.imageStats?.isBlank) {
+            flagReasons.push('Uploaded image appears to be blank');
+          }
+        }
+
+        // Check duplicate
+        const dupResult = duplicateResult.status === 'fulfilled' ? duplicateResult.value : null;
+        if (dupResult?.isDuplicate) {
+          aiFlags.isDuplicate = true;
+          aiFlags.duplicateOf = dupResult.duplicates?.[0]?.reportId || null;
+          flagReasons.push('Potential duplicate of an existing report');
+        }
+
+        // Compute credibility score
+        let credScore = 0.5;
+        if (aiFlags.descriptionMatchLevel === 'high') credScore += 0.2;
+        else if (aiFlags.descriptionMatchLevel === 'low') credScore -= 0.2;
+        if (aiFlags.imageTrust === 'high') credScore += 0.15;
+        else if (aiFlags.imageTrust === 'low') credScore -= 0.15;
+        if (aiFlags.locationVerified) credScore += 0.1;
+        if (aiFlags.isDuplicate) credScore -= 0.15;
+        if (aiFlags.categoryMatch === false) credScore -= 0.1;
+        aiFlags.credibilityScore = Math.max(0, Math.min(1, parseFloat(credScore.toFixed(3))));
+
+        // Set flag if any reasons exist
+        aiFlags.isFlagged = flagReasons.length > 0;
+        aiFlags.flagReasons = flagReasons;
+        reportData.aiFlags = aiFlags;
+
+      } catch (aiError) {
+        console.error('⚠️ AI analysis error (non-blocking):', aiError.message);
+      }
+
       const report = await Report.create(reportData);
       res.status(201).json({
         success: true,
-        message: 'Report submitted successfully',
+        message: reportData.aiFlags?.isFlagged
+          ? 'Report submitted but flagged for review by AI'
+          : 'Report submitted successfully',
         data: report,
-        uploadStats: req.uploadStats || null
+        uploadStats: req.uploadStats || null,
+        aiAnalysis,
+        flagged: reportData.aiFlags?.isFlagged || false,
+        flagReasons: reportData.aiFlags?.flagReasons || []
       });
 
     } catch (error) {
