@@ -181,6 +181,7 @@ exports.getReports = async (req, res, next) => {
   try {
     const reports = await Report.find()
       .populate('user', 'email phone')
+      .populate('comments.user', 'username email profilePhoto')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
