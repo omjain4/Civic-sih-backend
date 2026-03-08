@@ -10,7 +10,8 @@ const {
   upvoteReport,
   assignDepartment,
   updateUserReportImage,
-  deleteReportImage
+  deleteReportImage,
+  addComment
 } = require('../controllers/reportController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const router = express.Router();
@@ -21,6 +22,7 @@ router.route('/').get(getReports);
 // --- NEW UPVOTE ROUTE ---
 // Must be authenticated to upvote
 router.route('/:id/upvote').put(protect, upvoteReport);
+router.route('/:id/comment').post(protect, addComment);
 
 // All other routes that modify data are protected
 router.route('/')

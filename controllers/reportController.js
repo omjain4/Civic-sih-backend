@@ -74,7 +74,7 @@ const uploadToCloudinary = (req, res, next) => {
     },
     (error, result) => {
       const uploadTime = Date.now() - uploadStart;
-      
+
       if (error) {
         console.error('❌ Cloudinary upload failed:', error);
         return res.status(500).json({
@@ -83,7 +83,7 @@ const uploadToCloudinary = (req, res, next) => {
         });
       }
 
-            console.log('✅ Cloudinary upload successful!');
+      console.log('✅ Cloudinary upload successful!');
       console.log('📈 Upload statistics:', {
         url: result.secure_url,
         publicId: result.public_id,
@@ -115,7 +115,7 @@ exports.createReport = [
   upload.single('photo'),
   uploadToCloudinary,
   async (req, res, next) => {
-        try {
+    try {
       console.log('📝 Creating new report...');
       console.log('📋 Request data:', {
         title: req.body.title,
@@ -148,7 +148,7 @@ exports.createReport = [
         reportData.imageUrl = req.body.imageUrl;
       }
 
-      
+
       if (latitude && longitude) {
         reportData.location = {
           type: 'Point',
@@ -182,7 +182,7 @@ exports.getReports = async (req, res, next) => {
     const reports = await Report.find()
       .populate('user', 'email phone')
       .sort({ createdAt: -1 });
-    
+
     res.status(200).json({
       success: true,
       count: reports.length,
@@ -203,7 +203,7 @@ exports.getUserReports = async (req, res, next) => {
   try {
     const reports = await Report.find({ user: req.user.id })
       .sort({ createdAt: -1 });
-    
+
     res.status(200).json({
       success: true,
       count: reports.length,
@@ -258,27 +258,27 @@ exports.upvoteReport = async (req, res) => {
 // @route   PUT /api/reports/:id/assign
 // @access  Private/Admin
 exports.assignDepartment = async (req, res) => {
-    try {
-        const { department } = req.body;
+  try {
+    const { department } = req.body;
 
-        if (!department) {
-            return res.status(400).json({ success: false, message: 'Department is required' });
-        }
-
-        const report = await Report.findByIdAndUpdate(
-            req.params.id,
-            { assignedDepartment: department },
-            { new: true, runValidators: true }
-        );
-
-        if (!report) {
-            return res.status(404).json({ success: false, message: 'Report not found' });
-        }
-
-        res.status(200).json({ success: true, data: report });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Server Error' });
+    if (!department) {
+      return res.status(400).json({ success: false, message: 'Department is required' });
     }
+
+    const report = await Report.findByIdAndUpdate(
+      req.params.id,
+      { assignedDepartment: department },
+      { new: true, runValidators: true }
+    );
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    res.status(200).json({ success: true, data: report });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
 };
 
 
@@ -288,7 +288,9 @@ exports.assignDepartment = async (req, res) => {
 // @access  Public
 exports.getReport = async (req, res, next) => {
   try {
-    const report = await Report.findById(req.params.id).populate('user', 'email phone');
+    const report = await Report.findById(req.params.id)
+      .populate('user', 'email phone username profilePhoto')
+      .populate('comments.user', 'username email profilePhoto');
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
@@ -413,7 +415,7 @@ exports.deleteReportImage = async (req, res) => {
       } else {
         return res.status(400).json({ success: false, message: 'Invalid or missing image type specified.' });
       }
-    } 
+    }
     // User logic
     else {
       // Authorization checks for user
@@ -427,10 +429,10 @@ exports.deleteReportImage = async (req, res) => {
         await deleteFromCloudinary(report.imageUrl);
         report.imageUrl = null;
       } else {
-         return res.status(400).json({ success: false, message: 'No image to delete.' });
+        return res.status(400).json({ success: false, message: 'No image to delete.' });
       }
     }
-    
+
     await report.save();
     res.status(200).json({ success: true, data: report });
   } catch (error) {
@@ -455,18 +457,18 @@ exports.deleteReport = async (req, res, next) => {
 
     // Check if user is the report owner OR an admin
     if (report.user.toString() !== req.user.id && req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'User not authorized to delete this report' });
+      return res.status(403).json({ success: false, message: 'User not authorized to delete this report' });
     }
 
     // Helper function to delete from Cloudinary (if you have one)
     const deleteFromCloudinary = async (imageUrl) => {
-        if (!imageUrl) return;
-        try {
-            const publicIdWithFolder = imageUrl.split('/').slice(-2).join('/').split('.')[0];
-            await cloudinary.uploader.destroy(publicIdWithFolder);
-        } catch (err) {
-            console.error("Failed to delete image from Cloudinary:", err);
-        }
+      if (!imageUrl) return;
+      try {
+        const publicIdWithFolder = imageUrl.split('/').slice(-2).join('/').split('.')[0];
+        await cloudinary.uploader.destroy(publicIdWithFolder);
+      } catch (err) {
+        console.error("Failed to delete image from Cloudinary:", err);
+      }
     };
 
     // Delete associated images from Cloudinary
@@ -474,7 +476,7 @@ exports.deleteReport = async (req, res, next) => {
     await deleteFromCloudinary(report.afterImageUrl);
 
     await report.deleteOne();
-    
+
     res.status(200).json({
       success: true,
       message: 'Report deleted successfully',
@@ -512,7 +514,7 @@ exports.getReportStats = async (req, res, next) => {
 exports.getNearbyReports = async (req, res, next) => {
   try {
     const { latitude, longitude, radius } = req.params;
-    
+
     console.log('📍 Finding reports near:', {
       lat: parseFloat(latitude),
       lng: parseFloat(longitude),
@@ -533,7 +535,7 @@ exports.getNearbyReports = async (req, res, next) => {
     }).populate('user', 'email');
 
     console.log('📊 Nearby reports found:', reports.length);
-    
+
     res.status(200).json({
       success: true,
       count: reports.length,
@@ -554,7 +556,7 @@ exports.getNearbyReports = async (req, res, next) => {
 exports.bulkUpdateReports = async (req, res, next) => {
   try {
     const { reportIds, updateData } = req.body;
-    
+
     console.log('🔄 Bulk updating reports:', {
       count: reportIds.length,
       updateData
@@ -570,7 +572,7 @@ exports.bulkUpdateReports = async (req, res, next) => {
       matched: result.matchedCount,
       modified: result.modifiedCount
     });
-    
+
     res.status(200).json({
       success: true,
       message: `Updated ${result.modifiedCount} reports`,
@@ -585,5 +587,40 @@ exports.bulkUpdateReports = async (req, res, next) => {
       success: false,
       message: error.message
     });
+  }
+};
+
+// @desc    Add a comment to a report
+// @route   POST /api/reports/:id/comment
+// @access  Private
+exports.addComment = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'Comment text is required' });
+    }
+
+    const report = await Report.findById(req.params.id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    report.comments.push({
+      user: req.user.id,
+      text: text.trim(),
+      createdAt: new Date()
+    });
+
+    await report.save();
+
+    // Re-fetch with populated comments
+    const updated = await Report.findById(report._id)
+      .populate('comments.user', 'username email profilePhoto')
+      .populate('user', 'email phone');
+
+    res.status(201).json({ success: true, data: updated });
+  } catch (error) {
+    console.error('❌ Error adding comment:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };  

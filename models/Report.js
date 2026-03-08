@@ -12,15 +12,20 @@ const ReportSchema = new mongoose.Schema({
   address: { type: String, required: true },
   status: { type: String, required: true, enum: ['pending', 'in-progress', 'resolved'], default: 'pending' },
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
-  
+
   // --- NEW FIELD ---
   assignedDepartment: {
     type: String,
     default: 'Unassigned'
   },
-  
+
   createdAt: { type: Date, default: Date.now },
   severity: Number,
+  comments: [{
+    user: { type: mongoose.Schema.ObjectId, ref: 'User' },
+    text: { type: String, required: true, maxlength: 500 },
+    createdAt: { type: Date, default: Date.now }
+  }],
   upvotes: [{ type: mongoose.Schema.ObjectId, ref: 'User' }]
 });
 
